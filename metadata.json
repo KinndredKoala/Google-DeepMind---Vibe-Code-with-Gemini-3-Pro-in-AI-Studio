@@ -1,0 +1,5 @@
+{
+  "name": "Copy of NutriSnap AI",
+  "description": "An intelligent calorie and macronutrient estimator that instantly analyzes meal descriptions using Gemini AI.",
+  "requestFramePermissions": []
+}
