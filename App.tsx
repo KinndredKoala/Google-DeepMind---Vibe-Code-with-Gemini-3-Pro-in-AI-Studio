@@ -3,15 +3,22 @@ import Header from './components/Header';
 import InputSection from './components/InputSection';
 import ResultCard from './components/ResultCard';
 import HistoryList from './components/HistoryList';
+import FullHistoryView from './components/FullHistoryView';
+import LoginView from './components/LoginView';
 import { estimateMealCalories } from './services/geminiService';
 import { MealAnalysis, AnalysisStatus } from './types';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Lock } from 'lucide-react';
 
 const App: React.FC = () => {
   const [status, setStatus] = useState<AnalysisStatus>(AnalysisStatus.IDLE);
   const [currentAnalysis, setCurrentAnalysis] = useState<MealAnalysis | null>(null);
   const [history, setHistory] = useState<MealAnalysis[]>([]);
   const [error, setError] = useState<string | null>(null);
+  
+  // Navigation & Auth State
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentView, setCurrentView] = useState<'home' | 'history' | 'login'>('home');
+  const [username, setUsername] = useState<string>('');
 
   // Load history from local storage on mount
   useEffect(() => {
@@ -23,6 +30,14 @@ const App: React.FC = () => {
         console.error("Failed to load history", e);
       }
     }
+    
+    // Check auth persistence (optional for this demo, but good UX)
+    const savedAuth = localStorage.getItem('nutrisnap_auth');
+    if (savedAuth === 'true') {
+      setIsLoggedIn(true);
+      const savedUser = localStorage.getItem('nutrisnap_username');
+      if (savedUser) setUsername(savedUser);
+    }
   }, []);
 
   // Save history when it updates
@@ -30,10 +45,33 @@ const App: React.FC = () => {
     localStorage.setItem('nutrisnap_history', JSON.stringify(history));
   }, [history]);
 
+  // Handle Navigation to Login Page
+  const handleLoginClick = () => {
+    setCurrentView('login');
+    window.scrollTo(0, 0);
+  };
+
+  // Handle Actual Login Submission
+  const handleLoginSubmit = (user: string) => {
+    setIsLoggedIn(true);
+    setUsername(user);
+    localStorage.setItem('nutrisnap_auth', 'true');
+    localStorage.setItem('nutrisnap_username', user);
+    setCurrentView('home');
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setUsername('');
+    setCurrentView('home');
+    localStorage.removeItem('nutrisnap_auth');
+    localStorage.removeItem('nutrisnap_username');
+  };
+
   const handleAnalyze = async (input: string) => {
     setStatus(AnalysisStatus.LOADING);
     setError(null);
-    setCurrentAnalysis(null); // Clear previous result while loading
+    setCurrentAnalysis(null);
 
     try {
       const result = await estimateMealCalories(input);
@@ -46,7 +84,8 @@ const App: React.FC = () => {
       };
 
       setCurrentAnalysis(newAnalysis);
-      setHistory(prev => [newAnalysis, ...prev].slice(0, 10)); // Keep last 10
+      // Add to history (newest first)
+      setHistory(prev => [newAnalysis, ...prev]); 
       setStatus(AnalysisStatus.SUCCESS);
     } catch (err: any) {
       console.error(err);
@@ -60,16 +99,25 @@ const App: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header />
-      
-      <main className="flex-grow max-w-4xl mx-auto w-full px-4 py-8">
+  // Render content based on current view
+  const renderContent = () => {
+    if (currentView === 'login') {
+      return <LoginView onLogin={handleLoginSubmit} />;
+    }
+
+    if (currentView === 'history') {
+      return <FullHistoryView history={history} />;
+    }
+
+    // Default 'home' view
+    return (
+      <>
         <div className="text-center mb-8">
           <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">
             Instant Calorie Estimation
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            {isLoggedIn ? `Welcome back, ${username}. ` : ''}
             Just describe what you ate, and our AI will break down the nutrition for you instantly.
           </p>
         </div>
@@ -92,7 +140,39 @@ const App: React.FC = () => {
           </div>
         )}
 
-        <HistoryList history={history} onSelect={handleSelectHistory} />
+        {/* Show "Recent History" widget only if NOT in history view */}
+        {history.length > 0 && (
+           <HistoryList history={history.slice(0, 6)} onSelect={handleSelectHistory} />
+        )}
+        
+        {!isLoggedIn && history.length > 0 && (
+          <div className="mt-6 text-center">
+            <button 
+              onClick={handleLoginClick}
+              className="text-sm text-emerald-600 hover:text-emerald-700 font-medium flex items-center justify-center mx-auto space-x-1"
+            >
+              <Lock className="w-3 h-3" />
+              <span>Login to view full history and daily totals</span>
+            </button>
+          </div>
+        )}
+      </>
+    );
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col bg-gray-50">
+      <Header 
+        isLoggedIn={isLoggedIn}
+        onLogin={handleLoginClick}
+        onLogout={handleLogout}
+        onViewHistory={() => setCurrentView('history')}
+        onGoHome={() => setCurrentView('home')}
+        currentView={currentView === 'login' ? 'home' : currentView} // Treat login view as 'home' for header active state or just pass through
+      />
+      
+      <main className="flex-grow max-w-4xl mx-auto w-full px-4 py-8">
+        {renderContent()}
       </main>
 
       <footer className="bg-white border-t border-gray-200 py-8 mt-auto">
