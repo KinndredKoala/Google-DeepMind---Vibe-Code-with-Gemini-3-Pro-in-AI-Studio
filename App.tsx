@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import InputSection from './components/InputSection';
 import ResultCard from './components/ResultCard';
@@ -6,6 +6,7 @@ import HistoryList from './components/HistoryList';
 import FullHistoryView from './components/FullHistoryView';
 import LoginView from './components/LoginView';
 import { estimateMealCalories } from './services/geminiService';
+import { historyService } from './services/historyService';
 import { MealAnalysis, AnalysisStatus } from './types';
 import { AlertCircle, Lock } from 'lucide-react';
 
@@ -20,30 +21,32 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<'home' | 'history' | 'login'>('home');
   const [username, setUsername] = useState<string>('');
 
-  // Load history from local storage on mount
+  // Ref for scrolling to results
+  const resultRef = useRef<HTMLDivElement>(null);
+
+  // Initialize Auth and Load User Data on Mount
   useEffect(() => {
-    const saved = localStorage.getItem('nutrisnap_history');
-    if (saved) {
-      try {
-        setHistory(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to load history", e);
-      }
-    }
-    
-    // Check auth persistence (optional for this demo, but good UX)
     const savedAuth = localStorage.getItem('nutrisnap_auth');
-    if (savedAuth === 'true') {
+    const savedUser = localStorage.getItem('nutrisnap_username');
+
+    if (savedAuth === 'true' && savedUser) {
       setIsLoggedIn(true);
-      const savedUser = localStorage.getItem('nutrisnap_username');
-      if (savedUser) setUsername(savedUser);
+      setUsername(savedUser);
+      // Load specific user history
+      const userHistory = historyService.getUserHistory(savedUser);
+      setHistory(userHistory);
     }
   }, []);
 
-  // Save history when it updates
+  // Auto-scroll to result when analysis is successful
   useEffect(() => {
-    localStorage.setItem('nutrisnap_history', JSON.stringify(history));
-  }, [history]);
+    if (status === AnalysisStatus.SUCCESS && currentAnalysis && resultRef.current) {
+      // Small timeout ensures the DOM has fully rendered the card before scrolling
+      setTimeout(() => {
+        resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    }
+  }, [status, currentAnalysis]);
 
   // Handle Navigation to Login Page
   const handleLoginClick = () => {
@@ -55,20 +58,36 @@ const App: React.FC = () => {
   const handleLoginSubmit = (user: string) => {
     setIsLoggedIn(true);
     setUsername(user);
+    
+    // Persist Login Session
     localStorage.setItem('nutrisnap_auth', 'true');
     localStorage.setItem('nutrisnap_username', user);
+    
+    // Load User History (Replacing any guest session data)
+    const userHistory = historyService.getUserHistory(user);
+    setHistory(userHistory);
+    
+    // Reset view
     setCurrentView('home');
+    setCurrentAnalysis(null); // Clear any guest analysis on screen
+    setStatus(AnalysisStatus.IDLE);
   };
 
   const handleLogout = () => {
     setIsLoggedIn(false);
     setUsername('');
-    setCurrentView('home');
+    
+    // Clear Login Session
     localStorage.removeItem('nutrisnap_auth');
     localStorage.removeItem('nutrisnap_username');
+    
+    // Clear Data from View (Security/UX)
+    setHistory([]);
+    setCurrentAnalysis(null);
+    setCurrentView('home');
   };
 
-  const handleAnalyze = async (input: string) => {
+  const handleAnalyze = async (input: string, date: Date) => {
     setStatus(AnalysisStatus.LOADING);
     setError(null);
     setCurrentAnalysis(null);
@@ -76,16 +95,28 @@ const App: React.FC = () => {
     try {
       const result = await estimateMealCalories(input);
       
+      // Create timestamp from selected date but keep current time for ordering
+      const timestamp = new Date(date);
+      const now = new Date();
+      timestamp.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+
       const newAnalysis: MealAnalysis = {
         ...result,
         id: crypto.randomUUID(),
-        timestamp: Date.now(),
+        timestamp: timestamp.getTime(),
         originalInput: input,
       };
 
       setCurrentAnalysis(newAnalysis);
-      // Add to history (newest first)
-      setHistory(prev => [newAnalysis, ...prev]); 
+      
+      // Update local state for immediate feedback
+      setHistory(prev => [newAnalysis, ...prev]);
+
+      // Only save to persistent storage if logged in
+      if (isLoggedIn && username) {
+        historyService.saveUserMeal(username, newAnalysis);
+      }
+      
       setStatus(AnalysisStatus.SUCCESS);
     } catch (err: any) {
       console.error(err);
@@ -135,7 +166,7 @@ const App: React.FC = () => {
         )}
 
         {currentAnalysis && (
-          <div className="mb-12">
+          <div ref={resultRef} className="mb-12 scroll-mt-24">
             <ResultCard analysis={currentAnalysis} />
           </div>
         )}
@@ -168,7 +199,7 @@ const App: React.FC = () => {
         onLogout={handleLogout}
         onViewHistory={() => setCurrentView('history')}
         onGoHome={() => setCurrentView('home')}
-        currentView={currentView === 'login' ? 'home' : currentView} // Treat login view as 'home' for header active state or just pass through
+        currentView={currentView === 'login' ? 'home' : currentView} 
       />
       
       <main className="flex-grow max-w-4xl mx-auto w-full px-4 py-8">

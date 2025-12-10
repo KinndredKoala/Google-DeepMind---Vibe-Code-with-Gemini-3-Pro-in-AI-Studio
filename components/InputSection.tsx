@@ -1,19 +1,21 @@
 import React, { useState } from 'react';
 import { Send, Loader2, Utensils } from 'lucide-react';
 import { AnalysisStatus } from '../types';
+import DatePicker from './DatePicker';
 
 interface InputSectionProps {
-  onAnalyze: (input: string) => void;
+  onAnalyze: (input: string, date: Date) => void;
   status: AnalysisStatus;
 }
 
 const InputSection: React.FC<InputSectionProps> = ({ onAnalyze, status }) => {
   const [input, setInput] = useState('');
+  const [date, setDate] = useState(new Date());
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim() && status !== AnalysisStatus.LOADING) {
-      onAnalyze(input);
+      onAnalyze(input, date);
     }
   };
 
@@ -48,31 +50,36 @@ const InputSection: React.FC<InputSectionProps> = ({ onAnalyze, status }) => {
           disabled={status === AnalysisStatus.LOADING}
         />
         
-        <div className="flex justify-between items-center mt-4">
+        <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-4">
           <div className="text-xs text-gray-400 hidden sm:block">
             Pro tip: Be specific about quantities for better accuracy.
           </div>
-          <button
-            type="submit"
-            disabled={!input.trim() || status === AnalysisStatus.LOADING}
-            className={`flex items-center space-x-2 px-6 py-2.5 rounded-lg font-medium transition-all ${
-              !input.trim() || status === AnalysisStatus.LOADING
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md hover:shadow-lg transform hover:-translate-y-0.5'
-            }`}
-          >
-            {status === AnalysisStatus.LOADING ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Analyzing...</span>
-              </>
-            ) : (
-              <>
-                <span>Calculate</span>
-                <Send className="w-4 h-4" />
-              </>
-            )}
-          </button>
+          
+          <div className="flex items-center space-x-3 w-full sm:w-auto justify-end">
+            <DatePicker selectedDate={date} onChange={setDate} />
+            
+            <button
+              type="submit"
+              disabled={!input.trim() || status === AnalysisStatus.LOADING}
+              className={`flex items-center space-x-2 px-6 py-2.5 rounded-lg font-medium transition-all ${
+                !input.trim() || status === AnalysisStatus.LOADING
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md hover:shadow-lg transform hover:-translate-y-0.5'
+              }`}
+            >
+              {status === AnalysisStatus.LOADING ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Analyzing...</span>
+                </>
+              ) : (
+                <>
+                  <span>Calculate</span>
+                  <Send className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </form>
 

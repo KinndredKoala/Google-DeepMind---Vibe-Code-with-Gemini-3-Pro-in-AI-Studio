@@ -1,18 +1,21 @@
+
 import React, { useState } from 'react';
-import { Leaf, Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Leaf, Lock, User, ArrowRight, Eye, EyeOff, UserPlus } from 'lucide-react';
+import { authService } from '../services/authService';
 
 interface LoginViewProps {
   onLogin: (username: string) => void;
 }
 
 const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
+  const [isRegistering, setIsRegistering] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -22,12 +25,37 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     }
 
     setIsLoading(true);
-    
-    // Simulate network delay for a realistic feel
-    setTimeout(() => {
+
+    try {
+      if (isRegistering) {
+        const result = await authService.register(username, password);
+        if (result.success) {
+          // Auto login after register
+          onLogin(username);
+        } else {
+          setError(result.message || "Registration failed");
+          setIsLoading(false);
+        }
+      } else {
+        const result = await authService.login(username, password);
+        if (result.success) {
+          onLogin(username);
+        } else {
+          setError(result.message || "Login failed");
+          setIsLoading(false);
+        }
+      }
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
       setIsLoading(false);
-      onLogin(username);
-    }, 800);
+    }
+  };
+
+  const toggleMode = () => {
+    setIsRegistering(!isRegistering);
+    setError('');
+    setUsername('');
+    setPassword('');
   };
 
   return (
@@ -37,9 +65,13 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
           <div className="bg-emerald-100 p-3 rounded-full inline-flex items-center justify-center mb-4">
             <Leaf className="w-8 h-8 text-emerald-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">Welcome Back</h2>
+          <h2 className="text-2xl font-bold text-gray-900">
+            {isRegistering ? 'Create Account' : 'Welcome Back'}
+          </h2>
           <p className="mt-2 text-sm text-gray-600">
-            Sign in to track your meals and history
+            {isRegistering 
+              ? 'Sign up to start tracking your nutrition' 
+              : 'Sign in to track your meals and history'}
           </p>
         </div>
 
@@ -84,12 +116,12 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                 id="password"
                 name="password"
                 type={showPassword ? "text" : "password"}
-                autoComplete="current-password"
+                autoComplete={isRegistering ? "new-password" : "current-password"}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="block w-full pl-10 pr-10 py-2.5 bg-white border border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm text-gray-900 placeholder-gray-500"
-                placeholder="••••••••"
+                placeholder="Enter your password"
               />
               <button
                 type="button"
@@ -105,25 +137,27 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <input
-                id="remember-me"
-                name="remember-me"
-                type="checkbox"
-                className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
-              />
-              <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900">
-                Remember me
-              </label>
-            </div>
+          {!isRegistering && (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <input
+                  id="remember-me"
+                  name="remember-me"
+                  type="checkbox"
+                  className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
+                />
+                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900">
+                  Remember me
+                </label>
+              </div>
 
-            <div className="text-sm">
-              <a href="#" className="font-medium text-emerald-600 hover:text-emerald-500">
-                Forgot password?
-              </a>
+              <div className="text-sm">
+                <a href="#" className="font-medium text-emerald-600 hover:text-emerald-500">
+                  Forgot password?
+                </a>
+              </div>
             </div>
-          </div>
+          )}
 
           <button
             type="submit"
@@ -138,12 +172,16 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                Signing in...
+                Processing...
               </span>
             ) : (
               <span className="flex items-center">
-                Sign in
-                <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                {isRegistering ? 'Create Account' : 'Sign in'}
+                {isRegistering ? (
+                   <UserPlus className="ml-2 h-4 w-4" />
+                ) : (
+                   <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                )}
               </span>
             )}
           </button>
@@ -156,17 +194,17 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             </div>
             <div className="relative flex justify-center text-sm">
               <span className="px-2 bg-white text-gray-500">
-                Don't have an account?
+                {isRegistering ? 'Already have an account?' : "Don't have an account?"}
               </span>
             </div>
           </div>
 
           <div className="mt-6 text-center">
             <button
-              onClick={() => alert("Registration coming soon!")} 
-              className="font-medium text-emerald-600 hover:text-emerald-500"
+              onClick={toggleMode}
+              className="font-medium text-emerald-600 hover:text-emerald-500 transition-colors"
             >
-              Create a free account
+              {isRegistering ? 'Sign in instead' : 'Create a free account'}
             </button>
           </div>
         </div>
