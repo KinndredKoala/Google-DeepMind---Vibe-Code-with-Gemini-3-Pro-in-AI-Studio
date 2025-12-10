@@ -5,10 +5,18 @@ import ResultCard from './components/ResultCard';
 import HistoryList from './components/HistoryList';
 import FullHistoryView from './components/FullHistoryView';
 import LoginView from './components/LoginView';
-import { estimateMealCalories } from './services/geminiService';
+import { estimateMealCalories, estimateFoodItemNutrition } from './services/geminiService';
 import { historyService } from './services/historyService';
 import { MealAnalysis, AnalysisStatus } from './types';
 import { AlertCircle, Lock } from 'lucide-react';
+
+// Utility to generate a unique ID safely
+const generateId = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+};
 
 const App: React.FC = () => {
   const [status, setStatus] = useState<AnalysisStatus>(AnalysisStatus.IDLE);
@@ -32,9 +40,26 @@ const App: React.FC = () => {
     if (savedAuth === 'true' && savedUser) {
       setIsLoggedIn(true);
       setUsername(savedUser);
+      
       // Load specific user history
       const userHistory = historyService.getUserHistory(savedUser);
-      setHistory(userHistory);
+      
+      // MIGRATION: Ensure all items have IDs
+      let hasChanges = false;
+      const validHistory = userHistory.map(item => {
+        if (!item.id) {
+          hasChanges = true;
+          return { ...item, id: generateId() };
+        }
+        return item;
+      });
+
+      if (hasChanges) {
+        // Save back corrected data with IDs
+        validHistory.forEach(item => historyService.saveUserMeal(savedUser, item));
+      }
+
+      setHistory(validHistory);
     }
   }, []);
 
@@ -64,7 +89,14 @@ const App: React.FC = () => {
     localStorage.setItem('nutrisnap_username', user);
     
     // Load User History (Replacing any guest session data)
-    const userHistory = historyService.getUserHistory(user);
+    let userHistory = historyService.getUserHistory(user);
+    
+    // MIGRATION: Ensure all items have IDs on login as well
+    userHistory = userHistory.map(item => {
+      if (!item.id) return { ...item, id: generateId() };
+      return item;
+    });
+    
     setHistory(userHistory);
     
     // Reset view
@@ -102,7 +134,7 @@ const App: React.FC = () => {
 
       const newAnalysis: MealAnalysis = {
         ...result,
-        id: crypto.randomUUID(),
+        id: generateId(),
         timestamp: timestamp.getTime(),
         originalInput: input,
       };
@@ -130,6 +162,133 @@ const App: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleUpdateMealItem = async (mealId: string, itemIndex: number, newQuantity: string) => {
+    // Locate the meal in the history list to preserve its position
+    const historyIndex = history.findIndex(m => m.id === mealId);
+    
+    // Fallback to currentAnalysis if not found in history (unlikely given app logic but safe)
+    let mealToUpdate = historyIndex !== -1 ? history[historyIndex] : currentAnalysis;
+    
+    // ID verification
+    if (!mealToUpdate || mealToUpdate.id !== mealId) return;
+
+    try {
+      const itemToUpdate = mealToUpdate.foodItems[itemIndex];
+      
+      // Call API for new item details
+      const newItemDetails = await estimateFoodItemNutrition(itemToUpdate.name, newQuantity);
+
+      // Construct updated meal object
+      const updatedItems = [...mealToUpdate.foodItems];
+      updatedItems[itemIndex] = newItemDetails;
+
+      // Recalculate totals
+      const newTotals = updatedItems.reduce((acc, item) => ({
+        calories: acc.calories + item.calories,
+        protein: acc.protein + (item.proteinGrams || 0),
+        carbs: acc.carbs + (item.carbsGrams || 0),
+        fat: acc.fat + (item.fatGrams || 0),
+      }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+      const updatedMeal: MealAnalysis = {
+        ...mealToUpdate,
+        foodItems: updatedItems,
+        totalCalories: newTotals.calories,
+        proteinGrams: newTotals.protein,
+        carbsGrams: newTotals.carbs,
+        fatGrams: newTotals.fat
+      };
+
+      // Update State: History
+      if (historyIndex !== -1) {
+        const newHistory = [...history];
+        newHistory[historyIndex] = updatedMeal;
+        setHistory(newHistory);
+      } else {
+        // If it was only in currentAnalysis (edge case), update it there
+        setHistory(prev => prev.map(m => m.id === mealId ? updatedMeal : m));
+      }
+
+      // Update State: Current Analysis
+      if (currentAnalysis?.id === mealId) {
+        setCurrentAnalysis(updatedMeal);
+      }
+
+      // Persist if logged in
+      if (isLoggedIn && username) {
+        historyService.saveUserMeal(username, updatedMeal);
+      }
+
+    } catch (e) {
+      console.error("Failed to update item", e);
+      throw e; 
+    }
+  };
+
+  const handleDeleteItem = async (mealId: string, itemIndex: number) => {
+    // Similar logic to update: find, modify, save
+    const historyIndex = history.findIndex(m => m.id === mealId);
+    let mealToUpdate = historyIndex !== -1 ? history[historyIndex] : currentAnalysis;
+
+    if (!mealToUpdate || mealToUpdate.id !== mealId) return;
+
+    const updatedItems = [...mealToUpdate.foodItems];
+    updatedItems.splice(itemIndex, 1);
+
+    // Recalculate totals
+    const newTotals = updatedItems.reduce((acc, item) => ({
+      calories: acc.calories + item.calories,
+      protein: acc.protein + (item.proteinGrams || 0),
+      carbs: acc.carbs + (item.carbsGrams || 0),
+      fat: acc.fat + (item.fatGrams || 0),
+    }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+    const updatedMeal: MealAnalysis = {
+      ...mealToUpdate,
+      foodItems: updatedItems,
+      totalCalories: newTotals.calories,
+      proteinGrams: newTotals.protein,
+      carbsGrams: newTotals.carbs,
+      fatGrams: newTotals.fat
+    };
+
+     // Update State: History
+     if (historyIndex !== -1) {
+      const newHistory = [...history];
+      newHistory[historyIndex] = updatedMeal;
+      setHistory(newHistory);
+    } else {
+      setHistory(prev => prev.map(m => m.id === mealId ? updatedMeal : m));
+    }
+
+    // Update State: Current Analysis
+    if (currentAnalysis?.id === mealId) {
+      setCurrentAnalysis(updatedMeal);
+    }
+
+    // Persist if logged in
+    if (isLoggedIn && username) {
+      historyService.saveUserMeal(username, updatedMeal);
+    }
+  };
+
+  const handleDeleteAnalysis = (mealId: string) => {
+    if (window.confirm("Are you sure you want to delete this entire meal log?")) {
+      // 1. Update State
+      setHistory(prev => prev.filter(m => m.id !== mealId));
+      
+      // 2. Clear current view if it's the one being deleted
+      if (currentAnalysis?.id === mealId) {
+        setCurrentAnalysis(null);
+      }
+      
+      // 3. Update Storage
+      if (isLoggedIn && username) {
+        historyService.deleteUserMeal(username, mealId);
+      }
+    }
+  };
+
   // Render content based on current view
   const renderContent = () => {
     if (currentView === 'login') {
@@ -137,7 +296,7 @@ const App: React.FC = () => {
     }
 
     if (currentView === 'history') {
-      return <FullHistoryView history={history} />;
+      return <FullHistoryView history={history} onDelete={handleDeleteAnalysis} />;
     }
 
     // Default 'home' view
@@ -167,7 +326,11 @@ const App: React.FC = () => {
 
         {currentAnalysis && (
           <div ref={resultRef} className="mb-12 scroll-mt-24">
-            <ResultCard analysis={currentAnalysis} />
+            <ResultCard 
+              analysis={currentAnalysis} 
+              onUpdateItem={handleUpdateMealItem} 
+              onDeleteItem={handleDeleteItem}
+            />
           </div>
         )}
 

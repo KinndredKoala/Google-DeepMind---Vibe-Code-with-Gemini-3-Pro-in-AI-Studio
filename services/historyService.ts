@@ -19,10 +19,33 @@ export const historyService = {
   saveUserMeal(username: string, meal: MealAnalysis): void {
     try {
       const currentHistory = this.getUserHistory(username);
-      const newHistory = [meal, ...currentHistory];
+      
+      // Check if meal exists
+      const existingIndex = currentHistory.findIndex(m => m.id === meal.id);
+      
+      let newHistory;
+      if (existingIndex >= 0) {
+        // Update in place
+        newHistory = [...currentHistory];
+        newHistory[existingIndex] = meal;
+      } else {
+        // Add to front
+        newHistory = [meal, ...currentHistory];
+      }
+      
       localStorage.setItem(this.getStorageKey(username), JSON.stringify(newHistory));
     } catch (e) {
       console.error("Failed to save user meal", e);
+    }
+  },
+
+  deleteUserMeal(username: string, mealId: string): void {
+    try {
+      const currentHistory = this.getUserHistory(username);
+      const newHistory = currentHistory.filter(m => m.id !== mealId);
+      localStorage.setItem(this.getStorageKey(username), JSON.stringify(newHistory));
+    } catch (e) {
+      console.error("Failed to delete user meal", e);
     }
   }
 };

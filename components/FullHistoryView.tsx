@@ -1,9 +1,10 @@
 import React, { useMemo } from 'react';
 import { MealAnalysis } from '../types';
-import { Calendar, Flame, Utensils } from 'lucide-react';
+import { Calendar, Flame, Trash2 } from 'lucide-react';
 
 interface FullHistoryViewProps {
   history: MealAnalysis[];
+  onDelete?: (mealId: string) => void;
 }
 
 interface DayGroup {
@@ -18,7 +19,7 @@ interface DayGroup {
   };
 }
 
-const FullHistoryView: React.FC<FullHistoryViewProps> = ({ history }) => {
+const FullHistoryView: React.FC<FullHistoryViewProps> = ({ history, onDelete }) => {
   // Group meals by day and calculate totals
   const dailyGroups = useMemo(() => {
     const groups: Record<string, DayGroup> = {};
@@ -105,7 +106,7 @@ const FullHistoryView: React.FC<FullHistoryViewProps> = ({ history }) => {
             {/* Meals List */}
             <div className="divide-y divide-gray-100">
               {day.meals.sort((a, b) => b.timestamp - a.timestamp).map((meal) => (
-                <div key={meal.id} className="p-4 hover:bg-gray-50 transition-colors flex items-start sm:items-center justify-between gap-4">
+                <div key={meal.id} className="p-4 hover:bg-gray-50 transition-colors flex items-start sm:items-center justify-between gap-4 group">
                   <div className="flex-grow min-w-0">
                     <div className="flex items-center gap-3 mb-1">
                       <span className="text-xs font-medium text-gray-400 font-mono">
@@ -118,13 +119,28 @@ const FullHistoryView: React.FC<FullHistoryViewProps> = ({ history }) => {
                     </div>
                   </div>
                   
-                  <div className="flex-shrink-0 flex flex-col items-end">
-                    <span className="font-bold text-gray-700">{meal.totalCalories} kcal</span>
-                    <div className="flex gap-2 text-[10px] text-gray-400 mt-1">
-                      <span title="Protein" className="text-blue-400 font-medium">{meal.proteinGrams}p</span>
-                      <span title="Carbs" className="text-amber-400 font-medium">{meal.carbsGrams}c</span>
-                      <span title="Fat" className="text-red-400 font-medium">{meal.fatGrams}f</span>
+                  <div className="flex-shrink-0 flex items-center space-x-6">
+                    <div className="flex flex-col items-end">
+                      <span className="font-bold text-gray-700">{meal.totalCalories} kcal</span>
+                      <div className="flex gap-2 text-[10px] text-gray-400 mt-1">
+                        <span title="Protein" className="text-blue-400 font-medium">{meal.proteinGrams}p</span>
+                        <span title="Carbs" className="text-amber-400 font-medium">{meal.carbsGrams}c</span>
+                        <span title="Fat" className="text-red-400 font-medium">{meal.fatGrams}f</span>
+                      </div>
                     </div>
+                    
+                    {onDelete && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (meal.id) onDelete(meal.id);
+                        }}
+                        className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                        title="Delete entry"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

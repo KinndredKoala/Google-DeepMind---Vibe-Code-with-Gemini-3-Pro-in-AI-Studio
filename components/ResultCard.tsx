@@ -1,13 +1,19 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
-import { MealAnalysis } from '../types';
-import { Flame, Info, CheckCircle2 } from 'lucide-react';
+import { MealAnalysis, FoodItem } from '../types';
+import { Flame, Info, CheckCircle2, Edit2, Loader2, Save, Trash2, X } from 'lucide-react';
 
 interface ResultCardProps {
   analysis: MealAnalysis;
+  onUpdateItem?: (mealId: string, itemIndex: number, newQuantity: string) => Promise<void>;
+  onDeleteItem?: (mealId: string, itemIndex: number) => void;
 }
 
-const ResultCard: React.FC<ResultCardProps> = ({ analysis }) => {
+const ResultCard: React.FC<ResultCardProps> = ({ analysis, onUpdateItem, onDeleteItem }) => {
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [updatingIndex, setUpdatingIndex] = useState<number | null>(null);
+
   const data = [
     { name: 'Protein', value: analysis.proteinGrams, color: '#3b82f6' }, // blue-500
     { name: 'Carbs', value: analysis.carbsGrams, color: '#f59e0b' }, // amber-500
@@ -17,6 +23,48 @@ const ResultCard: React.FC<ResultCardProps> = ({ analysis }) => {
   // Calculate total grams for percentage
   const totalGrams = analysis.proteinGrams + analysis.carbsGrams + analysis.fatGrams;
   const validData = totalGrams > 0;
+
+  const handleStartEdit = (index: number, currentQuantity: string) => {
+    if (!onUpdateItem) return;
+    setEditingIndex(index);
+    setEditValue(currentQuantity);
+  };
+
+  const handleSaveEdit = async (index: number) => {
+    if (!analysis.id || !onUpdateItem) return;
+    
+    // Optimistic close
+    setEditingIndex(null);
+    
+    if (editValue.trim() === analysis.foodItems[index].quantity) return;
+
+    setUpdatingIndex(index);
+    try {
+      await onUpdateItem(analysis.id, index, editValue);
+    } catch (error) {
+      console.error("Failed to update item", error);
+      // Ideally show error toast here
+    } finally {
+      setUpdatingIndex(null);
+    }
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent, index: number) => {
+    e.stopPropagation();
+    if (!analysis.id || !onDeleteItem) return;
+    
+    if (window.confirm(`Are you sure you want to remove "${analysis.foodItems[index].name}"?`)) {
+       onDeleteItem(analysis.id, index);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
+    if (e.key === 'Enter') {
+      handleSaveEdit(index);
+    } else if (e.key === 'Escape') {
+      setEditingIndex(null);
+    }
+  };
 
   return (
     <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden animate-fade-in">
@@ -91,12 +139,63 @@ const ResultCard: React.FC<ResultCardProps> = ({ analysis }) => {
           <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Item Breakdown</h4>
           <div className="flex-grow space-y-3 mb-6">
             {analysis.foodItems.map((item, idx) => (
-              <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
-                <div>
-                  <div className="font-medium text-gray-800">{item.name}</div>
-                  <div className="text-xs text-gray-500">{item.quantity}</div>
+              <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100 group">
+                <div className="flex-grow min-w-0 mr-2">
+                  <div className="font-medium text-gray-800 truncate" title={item.name}>{item.name}</div>
+                  
+                  {/* Editable Quantity Area */}
+                  <div className="text-xs text-gray-500 mt-0.5 flex items-center">
+                    {editingIndex === idx ? (
+                      <div className="flex items-center space-x-2 mt-1 w-full">
+                        <input
+                          autoFocus
+                          type="text"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onBlur={() => handleSaveEdit(idx)}
+                          onKeyDown={(e) => handleKeyDown(e, idx)}
+                          onClick={(e) => e.stopPropagation()} 
+                          className="w-full bg-white border border-emerald-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartEdit(idx, item.quantity);
+                        }}
+                        className={`flex items-center hover:text-emerald-600 transition-colors text-left ${onUpdateItem ? 'cursor-pointer' : 'cursor-default'}`}
+                        disabled={!onUpdateItem || updatingIndex === idx}
+                        title={onUpdateItem ? "Click to edit quantity" : ""}
+                      >
+                         {updatingIndex === idx ? (
+                           <div className="flex items-center text-emerald-600">
+                             <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                             Updating...
+                           </div>
+                         ) : (
+                           <>
+                            <span className="truncate max-w-[120px]">{item.quantity}</span>
+                            {onUpdateItem && <Edit2 className="w-3 h-3 ml-1.5 opacity-0 group-hover:opacity-100 text-gray-400" />}
+                           </>
+                         )}
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="text-sm font-semibold text-gray-600">{item.calories} kcal</div>
+
+                <div className="flex items-center space-x-3 flex-shrink-0">
+                  <div className="text-sm font-semibold text-gray-600">{item.calories} kcal</div>
+                  {onDeleteItem && (
+                    <button 
+                      onClick={(e) => handleDeleteClick(e, idx)}
+                      className="p-1.5 text-red-400 bg-red-50 hover:bg-red-100 hover:text-red-600 rounded-full transition-colors"
+                      title="Remove item"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

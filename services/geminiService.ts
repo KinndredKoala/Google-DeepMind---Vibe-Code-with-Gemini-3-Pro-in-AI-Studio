@@ -1,12 +1,12 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { MealAnalysis } from "../types";
+import { MealAnalysis, FoodItem } from "../types";
 
 // Initialize the Gemini AI client
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export const estimateMealCalories = async (input: string): Promise<Omit<MealAnalysis, 'id' | 'timestamp' | 'originalInput'>> => {
-  const modelId = "gemini-2.5-flash"; // Excellent for fast, structured data tasks
+const modelId = "gemini-2.5-flash";
 
+export const estimateMealCalories = async (input: string): Promise<Omit<MealAnalysis, 'id' | 'timestamp' | 'originalInput'>> => {
   const response = await ai.models.generateContent({
     model: modelId,
     contents: `Analyze the following meal description and estimate the nutritional content. 
@@ -42,8 +42,11 @@ export const estimateMealCalories = async (input: string): Promise<Omit<MealAnal
                 name: { type: Type.STRING },
                 calories: { type: Type.INTEGER },
                 quantity: { type: Type.STRING, description: "e.g., '2 patties', '100g', '1 slice'" },
+                proteinGrams: { type: Type.INTEGER },
+                carbsGrams: { type: Type.INTEGER },
+                fatGrams: { type: Type.INTEGER },
               },
-              required: ["name", "calories", "quantity"],
+              required: ["name", "calories", "quantity", "proteinGrams", "carbsGrams", "fatGrams"],
             },
           },
           healthTip: {
@@ -67,4 +70,33 @@ export const estimateMealCalories = async (input: string): Promise<Omit<MealAnal
     console.error("Failed to parse JSON response:", response.text);
     throw new Error("Failed to process nutrition data.");
   }
+};
+
+export const estimateFoodItemNutrition = async (name: string, quantity: string): Promise<FoodItem> => {
+  const response = await ai.models.generateContent({
+    model: modelId,
+    contents: `Estimate the nutrition for: ${quantity} of ${name}`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING },
+          calories: { type: Type.INTEGER },
+          quantity: { type: Type.STRING },
+          proteinGrams: { type: Type.INTEGER },
+          carbsGrams: { type: Type.INTEGER },
+          fatGrams: { type: Type.INTEGER },
+        },
+        required: ["name", "calories", "quantity", "proteinGrams", "carbsGrams", "fatGrams"],
+      },
+      systemInstruction: "You are an expert nutritionist. Provide accurate nutritional data for the specific food item and quantity requested.",
+    },
+  });
+
+  if (!response.text) {
+    throw new Error("No response");
+  }
+
+  return JSON.parse(response.text);
 };

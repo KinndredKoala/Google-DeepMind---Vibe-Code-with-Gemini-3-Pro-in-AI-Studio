@@ -2,6 +2,9 @@ export interface FoodItem {
   name: string;
   calories: number;
   quantity: string;
+  proteinGrams: number;
+  carbsGrams: number;
+  fatGrams: number;
 }
 
 export interface MealAnalysis {
