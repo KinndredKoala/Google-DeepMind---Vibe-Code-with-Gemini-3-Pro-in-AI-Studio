@@ -1,18 +1,25 @@
 import React, { useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import { MealAnalysis, FoodItem } from '../types';
-import { Flame, Info, CheckCircle2, Edit2, Loader2, Save, Trash2, X } from 'lucide-react';
+import { Flame, Info, CheckCircle2, Edit2, Loader2, Save, Trash2, X, Plus } from 'lucide-react';
 
 interface ResultCardProps {
   analysis: MealAnalysis;
   onUpdateItem?: (mealId: string, itemIndex: number, newQuantity: string) => Promise<void>;
   onDeleteItem?: (mealId: string, itemIndex: number) => void;
+  onAddItem?: (mealId: string, name: string, quantity: string) => Promise<void>;
 }
 
-const ResultCard: React.FC<ResultCardProps> = ({ analysis, onUpdateItem, onDeleteItem }) => {
+const ResultCard: React.FC<ResultCardProps> = ({ analysis, onUpdateItem, onDeleteItem, onAddItem }) => {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
   const [updatingIndex, setUpdatingIndex] = useState<number | null>(null);
+  
+  // Add Item State
+  const [isAdding, setIsAdding] = useState(false);
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemQty, setNewItemQty] = useState('');
+  const [isSavingNew, setIsSavingNew] = useState(false);
 
   const data = [
     { name: 'Protein', value: analysis.proteinGrams, color: '#3b82f6' }, // blue-500
@@ -43,9 +50,24 @@ const ResultCard: React.FC<ResultCardProps> = ({ analysis, onUpdateItem, onDelet
       await onUpdateItem(analysis.id, index, editValue);
     } catch (error) {
       console.error("Failed to update item", error);
-      // Ideally show error toast here
     } finally {
       setUpdatingIndex(null);
+    }
+  };
+
+  const handleSaveNewItem = async () => {
+    if (!analysis.id || !onAddItem || !newItemName.trim() || !newItemQty.trim()) return;
+
+    setIsSavingNew(true);
+    try {
+      await onAddItem(analysis.id, newItemName, newItemQty);
+      setIsAdding(false);
+      setNewItemName('');
+      setNewItemQty('');
+    } catch (error) {
+      console.error("Failed to add item", error);
+    } finally {
+      setIsSavingNew(false);
     }
   };
 
@@ -63,6 +85,14 @@ const ResultCard: React.FC<ResultCardProps> = ({ analysis, onUpdateItem, onDelet
       handleSaveEdit(index);
     } else if (e.key === 'Escape') {
       setEditingIndex(null);
+    }
+  };
+
+  const handleNewItemKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSaveNewItem();
+    } else if (e.key === 'Escape') {
+      setIsAdding(false);
     }
   };
 
@@ -137,7 +167,7 @@ const ResultCard: React.FC<ResultCardProps> = ({ analysis, onUpdateItem, onDelet
         {/* Right Col: Details */}
         <div className="flex flex-col">
           <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Item Breakdown</h4>
-          <div className="flex-grow space-y-3 mb-6">
+          <div className="flex-grow space-y-3 mb-4">
             {analysis.foodItems.map((item, idx) => (
               <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100 group">
                 <div className="flex-grow min-w-0 mr-2">
@@ -198,6 +228,61 @@ const ResultCard: React.FC<ResultCardProps> = ({ analysis, onUpdateItem, onDelet
                 </div>
               </div>
             ))}
+
+            {/* Add New Item Row */}
+            {onAddItem && (
+              <>
+                {isAdding ? (
+                   <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100 animate-fade-in">
+                     <div className="space-y-2">
+                       <input
+                         type="text"
+                         placeholder="Food Name (e.g. Apple)"
+                         value={newItemName}
+                         onChange={(e) => setNewItemName(e.target.value)}
+                         className="w-full px-2 py-1.5 text-sm border border-emerald-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                         autoFocus
+                         onKeyDown={handleNewItemKeyDown}
+                       />
+                       <div className="flex space-x-2">
+                         <input
+                           type="text"
+                           placeholder="Qty (e.g. 1 medium)"
+                           value={newItemQty}
+                           onChange={(e) => setNewItemQty(e.target.value)}
+                           className="w-full px-2 py-1.5 text-sm border border-emerald-200 rounded focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                           onKeyDown={handleNewItemKeyDown}
+                         />
+                         <div className="flex items-center space-x-1">
+                           <button 
+                             onClick={handleSaveNewItem}
+                             disabled={isSavingNew}
+                             className="p-1.5 bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50"
+                           >
+                             {isSavingNew ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                           </button>
+                           <button 
+                             onClick={() => setIsAdding(false)}
+                             disabled={isSavingNew}
+                             className="p-1.5 bg-gray-200 text-gray-600 rounded hover:bg-gray-300 disabled:opacity-50"
+                           >
+                             <X className="w-4 h-4" />
+                           </button>
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                ) : (
+                  <button 
+                    onClick={() => setIsAdding(true)}
+                    className="w-full py-2 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 hover:border-emerald-300 hover:text-emerald-600 hover:bg-emerald-50 transition-all flex items-center justify-center text-sm font-medium"
+                  >
+                    <Plus className="w-4 h-4 mr-1.5" />
+                    Add Item
+                  </button>
+                )}
+              </>
+            )}
           </div>
 
           <div className="mt-auto bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-start space-x-3">

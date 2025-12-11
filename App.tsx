@@ -225,6 +225,56 @@ const App: React.FC = () => {
     }
   };
 
+  const handleAddItem = async (mealId: string, name: string, quantity: string) => {
+    const historyIndex = history.findIndex(m => m.id === mealId);
+    let mealToUpdate = historyIndex !== -1 ? history[historyIndex] : currentAnalysis;
+
+    if (!mealToUpdate || mealToUpdate.id !== mealId) return;
+
+    try {
+      // Call API for new item details
+      const newItem = await estimateFoodItemNutrition(name, quantity);
+
+      const updatedItems = [...mealToUpdate.foodItems, newItem];
+
+      // Recalculate totals
+      const newTotals = updatedItems.reduce((acc, item) => ({
+        calories: acc.calories + item.calories,
+        protein: acc.protein + (item.proteinGrams || 0),
+        carbs: acc.carbs + (item.carbsGrams || 0),
+        fat: acc.fat + (item.fatGrams || 0),
+      }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+      const updatedMeal: MealAnalysis = {
+        ...mealToUpdate,
+        foodItems: updatedItems,
+        totalCalories: newTotals.calories,
+        proteinGrams: newTotals.protein,
+        carbsGrams: newTotals.carbs,
+        fatGrams: newTotals.fat
+      };
+
+      if (historyIndex !== -1) {
+        const newHistory = [...history];
+        newHistory[historyIndex] = updatedMeal;
+        setHistory(newHistory);
+      } else {
+        setHistory(prev => prev.map(m => m.id === mealId ? updatedMeal : m));
+      }
+
+      if (currentAnalysis?.id === mealId) {
+        setCurrentAnalysis(updatedMeal);
+      }
+
+      if (isLoggedIn && username) {
+        historyService.saveUserMeal(username, updatedMeal);
+      }
+    } catch (e) {
+      console.error("Failed to add item", e);
+      throw e;
+    }
+  };
+
   const handleDeleteItem = async (mealId: string, itemIndex: number) => {
     // Similar logic to update: find, modify, save
     const historyIndex = history.findIndex(m => m.id === mealId);
@@ -330,6 +380,7 @@ const App: React.FC = () => {
               analysis={currentAnalysis} 
               onUpdateItem={handleUpdateMealItem} 
               onDeleteItem={handleDeleteItem}
+              onAddItem={handleAddItem}
             />
           </div>
         )}
